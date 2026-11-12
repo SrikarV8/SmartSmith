@@ -105,7 +105,7 @@ DOMAIN_SYSTEM_PROMPTS = {
 DOMAIN_KEYWORDS = {
     "legal": [
         "llc", "incorporate", "inc", "sole proprietorship", "partnership",
-        "legal", "permit", "license", "registration", "registered agent",
+        "legal", "permit", "license", "registration", "registered agent", "business structure", "s-corp", "corporation", "tax",
         "compliance", "trademark", "terms", "privacy policy", "tax id", "ein"
     ],
     "finance": [
@@ -476,7 +476,8 @@ def llm_domain_router(query: str) -> str:
             [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": query},
-            ]
+            ],
+            timeout=8.0,
         )
         parsed = extract_json_object(reply)
         if parsed and parsed.get("domain") in {"legal", "finance", "planning", "budget", "general"}:

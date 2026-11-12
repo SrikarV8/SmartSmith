@@ -114,6 +114,7 @@ def embed_one(text: str) -> List[float]:
 def chat_text(
     messages: List[Dict[str, str]],
     on_token: Optional[Callable[[str], None]] = None,
+    timeout: float = 15.0,
 ) -> str:
     """Return the model's reply; stream deltas to on_token when given."""
     if PROVIDER == "openai":
@@ -130,14 +131,15 @@ def chat_text(
 
     # Gemini: try each configured model until one answers (some are briefly overloaded).
     last_exc: Optional[Exception] = None
+    fast = client.with_options(timeout=timeout, max_retries=0)  # abandon a hung model quickly
     for model in CHAT_MODELS:
         emitted = False
         try:
             if on_token is None:
-                resp = client.chat.completions.create(model=model, messages=messages)
+                resp = fast.chat.completions.create(model=model, messages=messages)
                 return (resp.choices[0].message.content or "").strip()
             parts = []
-            stream = client.chat.completions.create(model=model, messages=messages, stream=True)
+            stream = fast.chat.completions.create(model=model, messages=messages, stream=True)
             for chunk in stream:
                 if not chunk.choices:
                     continue
