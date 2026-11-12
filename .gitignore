@@ -17,3 +17,6 @@ frontend/node_modules/
 .DS_Store
 .idea/
 .vscode/
+
+# Local embedding model cache
+.cache/

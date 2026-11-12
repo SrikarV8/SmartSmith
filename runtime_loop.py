@@ -10,8 +10,9 @@ from supabase import create_client, Client
 from tenacity import retry, stop_after_attempt, wait_exponential
 from tavily import TavilyClient
 
+from llm import PROVIDER, TABLE, chat_text, client, embed_one, missing_env
 from prepare_db import fetch_page_text, chunk_text, embed_texts, insert_chunks
-from fast_rag import DocCache, llm_text, run_in_background
+from fast_rag import DocCache, run_in_background
 
 load_dotenv()
 
@@ -19,16 +20,13 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
-OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
-if not OPENAI_API_KEY or not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("Missing required environment variables.")
+if missing_env():
+    raise ValueError(f"Missing required environment variables: {missing_env()}")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 tavily = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
-doc_cache = DocCache(supabase)
+doc_cache = DocCache(supabase, TABLE)
 
 
 # FUNCTIONS AND THINGS USED FOR EXTRA META DATA
@@ -88,16 +86,12 @@ def cosine_similarity(a: List[float], b: List[float]) -> float:
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
 def embed_query(query: str) -> List[float]:
     print("embedding the query -> ")
-    response = client.embeddings.create(
-        model=OPENAI_EMBEDDING_MODEL,
-        input=[query],
-    )
-    return response.data[0].embedding
+    return embed_one(query)
 
 
 def get_all_documents() -> List[Dict[str, Any]]:
     print("retrieving all documents in the database -> ")
-    response = supabase.table("documents").select("url, chunk_index, content, embedding").execute()
+    response = supabase.table(TABLE).select("url, chunk_index, content, embedding").execute()
     return response.data or []
 
 
@@ -225,7 +219,7 @@ def maybe_store_interaction(google_results: List[Dict[str, str]]) -> None:
         url = result["link"]
         try:
             # skip if already stored
-            existing = supabase.table("documents").select("url").eq("url", url).limit(1).execute()
+            existing = supabase.table(TABLE).select("url").eq("url", url).limit(1).execute()
             if existing.data:
                 continue
 
@@ -302,9 +296,7 @@ Google context:
 {google_context if google_context else "None"}
 """
 
-    return llm_text(
-        client,
-        OPENAI_MODEL,
+    return chat_text(
         [
             {"role": "system", "content": system_prompt},
             *conversation_history,

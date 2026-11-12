@@ -19,8 +19,9 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from supabase import Client, create_client
 from tavily import TavilyClient
 
+from llm import PROVIDER, TABLE, chat_text, embed_one, missing_env
 from prepare_db import fetch_page_text, chunk_text, embed_texts, insert_chunks
-from fast_rag import DocCache, llm_text, run_in_background
+from fast_rag import DocCache, run_in_background
 
 load_dotenv()
 
@@ -33,15 +34,12 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
-OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
-if not OPENAI_API_KEY:
-    raise ValueError("Missing OPENAI_API_KEY.")
+if missing_env():
+    raise ValueError(f"Missing required environment variables: {missing_env()}")
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("Missing SUPABASE_URL or SUPABASE_KEY.")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 from runtime_loop import doc_cache  # shared in-memory embedding cache
 tavily = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
@@ -272,15 +270,11 @@ def cosine_similarity(a: List[float], b: List[float]) -> float:
 
 
 def embed_text(text: str) -> List[float]:
-    response = client.embeddings.create(
-        model=OPENAI_EMBEDDING_MODEL,
-        input=[text],
-    )
-    return response.data[0].embedding
+    return embed_one(text)
 
 
 def get_all_documents() -> List[Dict[str, Any]]:
-    response = supabase.table("documents").select("*").execute()
+    response = supabase.table(TABLE).select("*").execute()
     return response.data or []
 
 
@@ -412,7 +406,7 @@ def maybe_store_interaction(
         try:
             existing = (
                 supabase
-                .table("documents")
+                .table(TABLE)
                 .select("url")
                 .eq("url", url)
                 .limit(1)
@@ -475,14 +469,13 @@ def llm_domain_router(query: str) -> str:
     )
 
     try:
-        response = client.responses.create(
-            model=OPENAI_MODEL,
-            input=[
+        reply = chat_text(
+            [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": query},
-            ],
+            ]
         )
-        parsed = extract_json_object(response.output_text.strip())
+        parsed = extract_json_object(reply)
         if parsed and parsed.get("domain") in {"legal", "finance", "planning", "budget", "general"}:
             return parsed["domain"]
     except Exception:
@@ -533,9 +526,7 @@ def answer_with_context(
         f"Web context:\n{web_context or 'None'}"
     )
 
-    return llm_text(
-        client,
-        OPENAI_MODEL,
+    return chat_text(
         [
             {"role": "system", "content": system_prompt},
             *conversation_history,
@@ -701,14 +692,12 @@ def build_image_prompt(query: str, answer_text: str) -> str:
         "Write one polished image-generation prompt."
     )
 
-    response = client.responses.create(
-        model=OPENAI_MODEL,
-        input=[
+    return chat_text(
+        [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
-        ],
+        ]
     )
-    return response.output_text.strip()
 
 
 def write_svg_preview(title: str, prompt: str, file_path: Path) -> None:

@@ -9,20 +9,18 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from supabase import Client, create_client
 from tavily import TavilyClient
+from llm import TABLE, embed_texts as _embed_texts, missing_env
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
-OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
-if not OPENAI_API_KEY or not SUPABASE_URL or not SUPABASE_KEY or not TAVILY_API_KEY:
-    raise ValueError("Missing required environment variables.")
+if missing_env(["TAVILY_API_KEY"]):
+    raise ValueError(f"Missing required environment variables: {missing_env(['TAVILY_API_KEY'])}")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 tavily = TavilyClient(api_key=TAVILY_API_KEY)
 
@@ -133,13 +131,13 @@ def hash_text(text: str) -> str:
 
 
 def get_existing_content_hashes() -> Set[str]:
-    response = supabase.table("documents").select("content").execute()
+    response = supabase.table(TABLE).select("content").execute()
     rows = response.data or []
     return {hash_text(row["content"]) for row in rows if row.get("content")}
 
 
 def get_existing_urls() -> Set[str]:
-    response = supabase.table("documents").select("url").execute()
+    response = supabase.table(TABLE).select("url").execute()
     rows = response.data or []
     return {normalize_url(row["url"]) for row in rows if row.get("url")}
 
@@ -210,11 +208,7 @@ def chunk_text(text: str, chunk_size: int = 1200, overlap: int = 200) -> List[st
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
 def embed_texts(texts: List[str]) -> List[List[float]]:
-    response = client.embeddings.create(
-        model=OPENAI_EMBEDDING_MODEL,
-        input=texts,
-    )
-    return [item.embedding for item in response.data]
+    return _embed_texts(texts)
 
 
 from typing import List, Optional
@@ -281,7 +275,7 @@ def insert_chunks(
     batch_size = 50
     for i in range(0, len(rows), batch_size):
         batch = rows[i:i + batch_size]
-        supabase.table("documents").insert(batch).execute()
+        supabase.table(TABLE).insert(batch).execute()
         inserted += len(batch)
 
     return inserted

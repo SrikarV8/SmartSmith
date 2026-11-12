@@ -22,8 +22,9 @@ PAGE_SIZE = 150  # embeddings are large; bigger pages hit Supabase's statement t
 
 
 class DocCache:
-    def __init__(self, supabase_client: Any) -> None:
+    def __init__(self, supabase_client: Any, table: str = "documents") -> None:
         self._sb = supabase_client
+        self._table = table
         self._lock = threading.Lock()
         self._docs: List[Dict[str, Any]] = []
         self._mat: Optional[np.ndarray] = None
@@ -68,7 +69,7 @@ class DocCache:
         for attempt in range(4):
             try:
                 return (
-                    self._sb.table("documents")
+                    self._sb.table(self._table)
                     .select("id, url, chunk_index, content, embedding, domain")
                     .order("id")
                     .range(start, start + PAGE_SIZE - 1)
@@ -160,18 +161,10 @@ def llm_text(
     messages: List[Dict[str, str]],
     on_token: Optional[Callable[[str], None]] = None,
 ) -> str:
-    """Return the model's text; stream deltas to on_token when provided."""
-    if on_token is None:
-        response = client.responses.create(model=model, input=messages)
-        return response.output_text.strip()
+    """Provider-agnostic reply (client/model kept for backward compatibility)."""
+    from llm import chat_text
 
-    parts: List[str] = []
-    stream = client.responses.create(model=model, input=messages, stream=True)
-    for event in stream:
-        if getattr(event, "type", "") == "response.output_text.delta":
-            parts.append(event.delta)
-            on_token(event.delta)
-    return "".join(parts).strip()
+    return chat_text(messages, on_token)
 
 
 def run_in_background(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:

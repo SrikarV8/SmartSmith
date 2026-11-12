@@ -56,7 +56,11 @@ source_env() {
 }
 source_env 2>/dev/null || true
 
-[ -z "$OPENAI_API_KEY" ]  && missing+=("OPENAI_API_KEY")
+if [ "${LLM_PROVIDER:-openai}" = "gemini" ]; then
+  [ -z "$GEMINI_API_KEY" ] && missing+=("GEMINI_API_KEY")
+else
+  [ -z "$OPENAI_API_KEY" ] && missing+=("OPENAI_API_KEY")
+fi
 [ -z "$SUPABASE_URL" ]    && missing+=("SUPABASE_URL")
 [ -z "$SUPABASE_KEY" ]    && missing+=("SUPABASE_KEY")
 

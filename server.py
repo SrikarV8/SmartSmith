@@ -28,7 +28,9 @@ if _env_file.exists():
 
     load_dotenv(_env_file)
 
-_missing = [k for k in ("OPENAI_API_KEY", "SUPABASE_URL", "SUPABASE_KEY") if not os.getenv(k)]
+from llm import missing_env  # noqa: E402
+
+_missing = missing_env()
 if _missing:
     print("\nSmartSmith backend cannot start - missing environment variables:")
     for key in _missing:
