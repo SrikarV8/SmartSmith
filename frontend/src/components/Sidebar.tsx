@@ -148,7 +148,6 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      <div className="border-t border-steel/70 px-4 py-3 text-xs text-smoke">Built at Texas BAXA</div>
     </aside>
   );
 };
