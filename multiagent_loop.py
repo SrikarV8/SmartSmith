@@ -21,7 +21,7 @@ from tavily import TavilyClient
 
 from llm import PROVIDER, TABLE, chat_text, embed_one, missing_env
 from prepare_db import fetch_page_text, chunk_text, embed_texts, insert_chunks
-from fast_rag import DocCache, run_in_background
+from fast_rag import DocCache, clean_history, contextual_query, run_in_background
 
 load_dotenv()
 
@@ -48,7 +48,7 @@ tavily = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 # Static user/business metadata
 # ---------------------------
 
-USER_CONTEXT = {
+DEFAULT_PROFILE = {
     "company_name": "Lone Star Candle Co.",
     "location": "Austin, Texas",
     "industry": "handmade consumer goods / e-commerce",
@@ -56,6 +56,9 @@ USER_CONTEXT = {
     "target_customer": "college students and young professionals",
     "business_goal": "grow online sales and improve customer retention",
 }
+# Off by default: a chat may only use context given in that chat. Set USE_DEFAULT_PROFILE=true
+# to inject the demo profile above into every question (CLI demos only).
+USER_CONTEXT = DEFAULT_PROFILE if os.getenv("USE_DEFAULT_PROFILE", "").lower() in {"1", "true", "yes"} else {}
 
 # ---------------------------
 # Output directories
@@ -546,7 +549,7 @@ def run_domain_agent(
     conversation_history: List[Dict[str, str]],
     on_token: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    enriched_query = build_enriched_query(query, user_context_text)
+    enriched_query = build_enriched_query(contextual_query(query, conversation_history), user_context_text)
     similar_chunks = retrieve_similar_chunks(enriched_query, domain=domain, top_k=5)
     top_score = similar_chunks[0][0] if similar_chunks else 0.0
 
@@ -592,7 +595,7 @@ def run_general_agent(
     conversation_history: List[Dict[str, str]],
     on_token: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    enriched_query = build_enriched_query(query, user_context_text)
+    enriched_query = build_enriched_query(contextual_query(query, conversation_history), user_context_text)
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=2) as pool:
         chunks_future = pool.submit(retrieve_similar_chunks, enriched_query, None, 5)
@@ -754,10 +757,10 @@ def run_multi_agent(
     conversation_history: Optional[List[Dict[str, str]]] = None,
     on_token: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    conversation_history = conversation_history or []
+    conversation_history = clean_history(conversation_history)
     user_context_text = format_user_context(USER_CONTEXT)
 
-    routing = route_query(query)
+    routing = route_query(contextual_query(query, conversation_history))
     domain = routing["domain"]
     tools = routing["tools"]
 

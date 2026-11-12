@@ -12,7 +12,7 @@ from tavily import TavilyClient
 
 from llm import PROVIDER, TABLE, chat_text, client, embed_one, missing_env
 from prepare_db import fetch_page_text, chunk_text, embed_texts, insert_chunks
-from fast_rag import DocCache, run_in_background
+from fast_rag import DocCache, clean_history, contextual_query, run_in_background
 
 load_dotenv()
 
@@ -31,7 +31,7 @@ doc_cache = DocCache(supabase, TABLE)
 
 # FUNCTIONS AND THINGS USED FOR EXTRA META DATA
 
-USER_CONTEXT = {
+DEFAULT_PROFILE = {
     "company_name": "Lone Star Candle Co.",
     "location": "Austin, Texas",
     "industry": "handmade consumer goods / e-commerce",
@@ -39,6 +39,9 @@ USER_CONTEXT = {
     "target_customer": "college students and young professionals",
     "business_goal": "grow online sales and improve customer retention",
 }
+# Off by default: a chat may only use context given in that chat. Set USE_DEFAULT_PROFILE=true
+# to inject the demo profile above into every question (CLI demos only).
+USER_CONTEXT = DEFAULT_PROFILE if os.getenv("USE_DEFAULT_PROFILE", "").lower() in {"1", "true", "yes"} else {}
 
 def format_user_context(user_context: dict) -> str:
     print("formatting user context -> ")
@@ -423,8 +426,8 @@ def run_single_agent(
     on_token: Optional[Any] = None,
 ) -> Dict[str, Any]:
     user_context_text = format_user_context(USER_CONTEXT)
-    enriched_query = build_enriched_query(query, user_context_text)
-    conversation_history = conversation_history or []
+    conversation_history = clean_history(conversation_history)
+    enriched_query = build_enriched_query(contextual_query(query, conversation_history), user_context_text)
 
     similar_chunks = retrieve_similar_chunks(enriched_query, top_k=5)
     source_mode = decide_sources(similar_chunks)

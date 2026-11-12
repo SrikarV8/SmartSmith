@@ -23,11 +23,14 @@ const toConversationHistory = (
   messages: Message[]
 ): ConversationHistoryItem[] =>
   messages
-    .filter((message) => message.content.trim())
     .map((message) => ({
       role: message.role,
-      content: message.content,
-    }));
+      // drop the "[generation stopped]" note; skip error notices entirely
+      content: message.content.replace(/\n*_\[generation stopped\]_\s*$/, "").trim(),
+    }))
+    .filter(
+      (message) => message.content && !message.content.includes("_[error]")
+    );
 
 const App: React.FC = () => {
   const [conversations, setConversations] = useLocalStorage<Conversation[]>(

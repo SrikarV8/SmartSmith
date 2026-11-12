@@ -41,7 +41,7 @@ if PROVIDER == "gemini":
     EMBEDDING_MODEL = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-2")
     EMBEDDING_DIMS: Optional[int] = int(os.getenv("GEMINI_EMBEDDING_DIMS", "768"))
     TABLE = os.getenv("DOCUMENTS_TABLE", "documents_gemini")
-    client = OpenAI(api_key=API_KEY or "missing", base_url=GEMINI_BASE_URL, timeout=45.0, max_retries=0)
+    client = OpenAI(api_key=API_KEY or "missing", base_url=GEMINI_BASE_URL, timeout=45.0, max_retries=2)
 else:
     API_KEY_NAME = "OPENAI_API_KEY"
     API_KEY = os.getenv(API_KEY_NAME)

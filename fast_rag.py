@@ -169,3 +169,42 @@ def llm_text(
 
 def run_in_background(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> None:
     threading.Thread(target=fn, args=args, kwargs=kwargs, daemon=True).start()
+
+
+# ── Per-chat conversation context ────────────────────────────────────────────
+
+MAX_HISTORY_MESSAGES = 20
+_FOLLOW_UP_WORDS = {
+    "it", "its", "that", "this", "those", "these", "they", "them", "he", "she", "there",
+    "also", "again", "another", "more", "else", "first", "second", "third", "last", "previous",
+    "above", "same", "instead", "then",
+}
+
+
+def clean_history(history: Optional[List[Dict[str, str]]]) -> List[Dict[str, str]]:
+    """Keep only real, recent turns of THIS chat (no blanks, errors, or runaway length)."""
+    cleaned: List[Dict[str, str]] = []
+    for turn in history or []:
+        role, content = turn.get("role"), (turn.get("content") or "").strip()
+        if role not in {"user", "assistant"} or not content:
+            continue
+        if content.startswith("_[error]") or content.startswith("_[generation stopped]"):
+            continue
+        cleaned.append({"role": role, "content": content})
+    return cleaned[-MAX_HISTORY_MESSAGES:]
+
+
+def contextual_query(query: str, history: Optional[List[Dict[str, str]]]) -> str:
+    """
+    Build the text used for document search / routing / web search.
+    A short or pronoun-heavy follow-up ("what about the second one?") is searched together
+    with the previous question from the SAME chat; a self-contained question is left alone.
+    """
+    previous_user = [t["content"] for t in clean_history(history) if t["role"] == "user"]
+    if not previous_user:
+        return query
+    words = [w.strip(".,!?;:'\"").lower() for w in query.split()]
+    is_follow_up = len(words) <= 8 or any(w in _FOLLOW_UP_WORDS for w in words)
+    if not is_follow_up:
+        return query
+    return f"{previous_user[-1][:300]} — follow-up: {query}"
